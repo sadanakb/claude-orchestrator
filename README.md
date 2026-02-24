@@ -1,59 +1,76 @@
 # Claude Orchestrator v3
 
-Automatisches Context-Management fuer Claude Code. Checkpoint-System statt einmaligem Handoff, CLAUDE.md als Orchestrator statt Hook-Injections, Zero API-Calls.
+![Shell](https://img.shields.io/badge/Shell-Bash-4EAA25?logo=gnu-bash&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Claude Code](https://img.shields.io/badge/Claude_Code-Compatible-blueviolet)
 
-## Was sich gegenueber v2 geaendert hat
+**Automatic context management for Claude Code.** Checkpoints after every subtask, auto-handoff when context fills up, seamless session restarts — zero API calls.
 
-| v2 | v3 |
-|----|-----|
-| Einmaliger Handoff bei 55% | Checkpoint nach jeder Teilaufgabe |
-| 5 Hooks (inkl. prompt-guard.py mit API-Call) | 4 Hooks (reine Shell-Skripte, Zero Latency) |
-| Task-Queue in JSON (buggy) | Checkpoint in Markdown (einfach, lesbar) |
-| Hook-Injection fuer Delegation | CLAUDE.md-Protokoll (zuverlaessiger) |
-| Leeres Handoff-Template bei Crash | CHECKPOINT.md als Handoff-Basis |
+---
 
-## Was es macht
+## The Problem
 
-1. **Checkpoint-System** — Nach jeder Teilaufgabe schreibt Claude `.claude/CHECKPOINT.md` mit dem aktuellen Stand
-2. **Auto-Handoff** — Bei 55%+ Context wird CHECKPOINT.md zur HANDOFF.md kopiert und die Session beendet
-3. **Auto-Restart** — `auto-session.sh` startet Claude neu wenn ein Handoff existiert
-4. **StatusLine** — Zeigt live: Context% + Checkpoint-Count + Projekt
+Claude Code's context window fills up mid-task. You lose progress. Manual handoffs are tedious. Copy-pasting summaries between sessions is error-prone.
 
-## Was es NICHT macht (bewusst entfernt)
+## The Solution
 
-- ~~API-Calls~~ — Kein Haiku, kein ANTHROPIC_API_KEY noetig
-- ~~Task-Queue~~ — War buggy (alle in_progress Tasks wurden nach jeder Antwort completed)
-- ~~Hook-Injection fuer Delegation~~ — Claude ignoriert injizierte Anweisungen oft
-- ~~Komplexitaets-Scoring~~ — Regex kann Intent nicht verstehen
+Claude Orchestrator turns Claude Code into a **self-managing agent** that:
+- Writes checkpoints after every completed subtask
+- Auto-hands off when context reaches 55%+
+- Restarts itself and picks up exactly where it left off
+- Shows a live StatusLine so you always know where things stand
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Checkpoint System** | After every subtask, Claude writes `.claude/CHECKPOINT.md` with current progress |
+| **Auto-Handoff** | At 55%+ context, CHECKPOINT.md becomes HANDOFF.md and the session ends gracefully |
+| **Auto-Restart** | `auto-session.sh` detects handoffs and restarts Claude automatically |
+| **StatusLine** | Live display: Context% + Checkpoint count + Project name |
+| **Zero API Calls** | Pure shell scripts — no ANTHROPIC_API_KEY needed, zero latency |
+| **CLAUDE.md Protocol** | Delegation rules, context traffic light, and workflow guidance |
+
+---
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  auto-session.sh │────▶│  Claude Code  │────▶│  CHECKPOINT.md  │
+│  (restart loop)  │◀────│  (working)   │     │  (after tasks)  │
+└─────────────────┘     └──────────────┘     └─────────────────┘
+        ▲                      │                      │
+        │                      ▼                      ▼
+        │               ┌──────────────┐     ┌─────────────────┐
+        └───────────────│  stop-check  │     │   HANDOFF.md    │
+                        │  (55%+ exit) │────▶│  (for restart)  │
+                        └──────────────┘     └─────────────────┘
+```
+
+---
 
 ## Installation
 
 ```bash
-git clone <repo-url> ~/claude-orchestrator
+git clone https://github.com/sadanakb/claude-orchestrator.git ~/claude-orchestrator
 cd ~/claude-orchestrator
 chmod +x install.sh
 ./install.sh
 ```
 
-### CLAUDE.md konfigurieren
-
-Der wichtigste Schritt: Kopiere das Orchestrator-Protokoll in die CLAUDE.md deines Projekts:
+Then copy the orchestrator protocol into your project's CLAUDE.md:
 
 ```bash
-cat ~/.claude/templates/ORCHESTRATOR-PROTOCOL.md >> /dein-projekt/CLAUDE.md
+cat ~/.claude/templates/ORCHESTRATOR-PROTOCOL.md >> /your-project/CLAUDE.md
 ```
 
-Das Protokoll gibt Claude Anweisungen fuer:
-- **Delegation** — Wann Sub-Agents nutzen (Explore, Build, Parallel)
-- **Checkpoints** — Wann und wie `.claude/CHECKPOINT.md` schreiben
-- **Context-Ampel** — Was bei 🟢🟡🟠🔴 zu tun ist
-
-### Optionale Konfiguration
-
-Erstelle `.claude/orchestrator.json` in deinem Projekt fuer eigene Werte:
+### Optional: Per-Project Config
 
 ```bash
-cp ~/claude-orchestrator/orchestrator.json.example /dein-projekt/.claude/orchestrator.json
+cp ~/claude-orchestrator/orchestrator.json.example /your-project/.claude/orchestrator.json
 ```
 
 ```json
@@ -64,67 +81,93 @@ cp ~/claude-orchestrator/orchestrator.json.example /dein-projekt/.claude/orchest
 }
 ```
 
-## Nutzung
+---
+
+## Usage
 
 ```bash
-# Starte Claude immer so:
-~/.claude/auto-session.sh /pfad/zum/projekt
+# Always start Claude like this:
+~/.claude/auto-session.sh /path/to/project
 
-# Mit Extra-Flags:
-~/.claude/auto-session.sh /pfad/zum/projekt --model opus --verbose
+# With extra flags:
+~/.claude/auto-session.sh /path/to/project --model opus --verbose
 ```
 
-### Was passiert
+### What Happens
 
 ```
-Claude arbeitet... 🟢 30% | ✓2 | projekt
-  → Teilaufgabe fertig → CHECKPOINT.md aktualisiert
-  → StatusLine: 🟡 48% | ✓5 | projekt
-  → Weiter arbeiten...
-  → StatusLine: 🟠 56% | ✓7 | projekt
-  → stop-check: Kopiert CHECKPOINT.md → HANDOFF.md
-  → Claude: "Tippe /exit"
-  → Du: /exit
-  → Wrapper: "Handoff erkannt, starte neu..."
-  → Neue Session laedt Handoff → weiter geht's
-  → Aufgabe fertig → /exit → kein Handoff → Wrapper stoppt
+Claude working...  🟢 30% | ✓2 | my-project
+  → Subtask done → CHECKPOINT.md updated
+  → StatusLine:   🟡 48% | ✓5 | my-project
+  → Keep working...
+  → StatusLine:   🟠 56% | ✓7 | my-project
+  → stop-check: Copies CHECKPOINT.md → HANDOFF.md
+  → Claude: "Type /exit"
+  → You: /exit
+  → Wrapper: "Handoff detected, restarting..."
+  → New session loads handoff → continues
+  → Task complete → /exit → no handoff → wrapper stops
 ```
 
-### Manueller Checkpoint
+### Manual Checkpoint
 
-Jederzeit waehrend der Arbeit:
+Any time during work:
 ```
 /checkpoint
 ```
 
-Claude schreibt den aktuellen Stand in `.claude/CHECKPOINT.md`.
+---
 
-## Dateien
+## v2 vs v3
+
+| v2 | v3 |
+|----|-----|
+| One-time handoff at 55% | Checkpoint after every subtask |
+| 5 hooks (incl. API call) | 4 hooks (pure shell, zero latency) |
+| Task queue in JSON (buggy) | Checkpoint in Markdown (simple, readable) |
+| Hook injection for delegation | CLAUDE.md protocol (more reliable) |
+| Empty handoff template on crash | CHECKPOINT.md as handoff basis |
+
+---
+
+## File Structure
 
 ```
 claude-orchestrator/
 ├── hooks/
-│   ├── statusline.sh           # Context% + Checkpoint-Count + Projekt
-│   ├── stop-check.sh           # Auto-Handoff bei Threshold
-│   ├── session-start.sh        # Handoff/Checkpoint laden + konsumieren
-│   └── pre-compact.sh          # Backup vor Compaction
+│   ├── statusline.sh             # Context% + Checkpoint count + Project
+│   ├── stop-check.sh             # Auto-handoff at threshold
+│   ├── session-start.sh          # Load handoff/checkpoint + consume
+│   └── pre-compact.sh            # Backup before compaction
 ├── commands/
-│   └── checkpoint.md           # /checkpoint Slash-Command
+│   └── checkpoint.md             # /checkpoint slash command
 ├── templates/
-│   └── ORCHESTRATOR-PROTOCOL.md  # Herzstuck → in CLAUDE.md kopieren
-├── auto-session.sh             # Wrapper: Auto-Restart-Loop
-├── orchestrator.json.example   # Per-Projekt Config (optional)
-├── settings.json               # Hook-Konfiguration
-├── install.sh                  # Installation
-├── uninstall.sh                # Deinstallation
-└── README.md                   # Diese Datei
+│   └── ORCHESTRATOR-PROTOCOL.md  # Core protocol → copy into CLAUDE.md
+├── auto-session.sh               # Wrapper: auto-restart loop
+├── orchestrator.json.example     # Per-project config (optional)
+├── settings.json                 # Hook configuration
+├── install.sh                    # Installation
+├── uninstall.sh                  # Uninstallation
+└── README.md
 ```
 
-## Deinstallation
+---
+
+## Uninstall
 
 ```bash
 cd ~/claude-orchestrator
 ./uninstall.sh
 ```
 
-Projekt-Dateien (`.claude/CHECKPOINT.md`, `.claude/HANDOFF.md`) werden NICHT geloescht.
+Project files (`.claude/CHECKPOINT.md`, `.claude/HANDOFF.md`) are **not** deleted.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+Built for developers who ship with Claude Code.
