@@ -46,7 +46,26 @@ fi
 
 RESTART_COUNT=0
 SESSION_LOG="$PROJECT_DIR/.claude/sessions.log"
+PROTOCOL_TEMPLATE=~/.claude/templates/ORCHESTRATOR-PROTOCOL.md
+CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
 mkdir -p "$PROJECT_DIR/.claude"
+
+# ── Auto-inject Orchestrator Protocol into CLAUDE.md ──────────────
+# Checks if protocol is already present. If not, appends it.
+# This is the "brain" — without it, Claude doesn't write checkpoints
+# or delegate to sub-agents. Hooks alone are just infrastructure.
+if [ -f "$PROTOCOL_TEMPLATE" ]; then
+    if [ ! -f "$CLAUDE_MD" ]; then
+        # No CLAUDE.md exists → create with protocol
+        cp "$PROTOCOL_TEMPLATE" "$CLAUDE_MD"
+        echo "✅ CLAUDE.md erstellt mit Orchestrator-Protokoll"
+    elif ! grep -q "Orchestrator Protocol" "$CLAUDE_MD" 2>/dev/null; then
+        # CLAUDE.md exists but no protocol → append
+        echo "" >> "$CLAUDE_MD"
+        cat "$PROTOCOL_TEMPLATE" >> "$CLAUDE_MD"
+        echo "✅ Orchestrator-Protokoll in CLAUDE.md ergaenzt"
+    fi
+fi
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║  Claude Orchestrator v3 — Auto-Session           ║"
