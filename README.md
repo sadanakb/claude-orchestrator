@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-Compatible-blueviolet)
 
-**Automatic context management for Claude Code.** Checkpoints after every subtask, auto-handoff when context fills up, seamless session restarts — zero API calls.
+**Workflow hooks for Claude Code.** Automatic checkpoints after every subtask, auto-handoff when context fills up, session restarts — zero API calls, pure shell scripts.
 
 ---
 
@@ -14,7 +14,7 @@ Claude Code's context window fills up mid-task. You lose progress. Manual handof
 
 ## The Solution
 
-Claude Orchestrator turns Claude Code into a **self-managing agent** that:
+Claude Orchestrator adds **workflow hooks** to Claude Code that:
 - Writes checkpoints after every completed subtask
 - Auto-hands off when context reaches 55%+
 - Restarts itself and picks up exactly where it left off
@@ -180,4 +180,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-Built by a developer who ships with Claude Code.
+Built with Claude Code.
