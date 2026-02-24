@@ -103,16 +103,16 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 # -- 4. Dynamic threshold based on queue size ------------------------
-# AGGRESSIVE thresholds — handoff happens EARLY so 🔴 never appears
-# Queue empty  → 50% remaining (50% used) = standard
-# Queue 1-2    → 55% remaining (45% used) = aggressive
-# Queue 3+     → 60% remaining (40% used) = very aggressive
+# Handoff at 55-60% used. auto-session.sh restarts automatically.
+# Queue empty  → 45% remaining (55% used)
+# Queue 1-2    → 42% remaining (58% used)
+# Queue 3+     → 40% remaining (60% used)
 if [ "$QUEUE_SIZE" -gt 2 ] 2>/dev/null; then
-    THRESHOLD=60
+    THRESHOLD=40
 elif [ "$QUEUE_SIZE" -gt 0 ] 2>/dev/null; then
-    THRESHOLD=55
+    THRESHOLD=42
 else
-    THRESHOLD=50
+    THRESHOLD=45
 fi
 
 REMAINING=$(python3 -c "
@@ -158,19 +158,20 @@ if [ "$REMAINING" -le "$THRESHOLD" ] 2>/dev/null; then
 HANDOFF_EOF
     fi
 
-    # ── TELL CLAUDE: Write real handoff, then user must /clear ──
+    # ── TELL CLAUDE: Write real handoff, then exit ──────────────
     echo "
-⚠️  CONTEXT BEI ${USED}% — AUTOMATISCHER HANDOFF
+⚠️  CONTEXT BEI ${USED}% — AUTOMATISCHER HANDOFF + NEUSTART
 
 1. Schreibe JETZT .claude/HANDOFF.md mit dem echten Stand:
    - Was wurde gemacht (Dateien + Zusammenfassung)
    - Was ist noch offen (TODOs mit Prioritaet)
-   - Exakter naechster Schritt
+   - Exakter naechster Schritt + welche Agents zuerst spawnen
 
-2. Sage dem User: **Tippe /clear um mit frischem Context weiterzumachen.**
-   Die HANDOFF.md wird automatisch in die neue Session geladen.
+2. Sage dem User: **Tippe /exit — die Session startet automatisch neu.**
+   (Wenn auto-session.sh laeuft, passiert der Neustart von alleine.
+    Wenn nicht: /clear und dann manuell weiter.)
 
-WICHTIG: Kein neuer Code mehr. Nur Handoff schreiben und User zum /clear auffordern.
+WICHTIG: Kein neuer Code mehr. Nur Handoff schreiben und Session beenden.
 " >&2
     exit 2
 fi

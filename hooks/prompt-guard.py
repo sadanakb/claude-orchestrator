@@ -104,13 +104,13 @@ def should_nudge_clear(project_dir):
 
 
 def inject_clear_nudge():
-    """Tell Claude the context is full and user should /clear."""
+    """Tell Claude the context is full and user should /exit."""
     context = """\
-\u26a0\ufe0f CONTEXT-LIMIT ERREICHT — /clear eingeben!
+\u26a0\ufe0f CONTEXT-LIMIT ERREICHT — Session beenden!
 
 Der Handoff wurde bereits geschrieben (.claude/HANDOFF.md).
-Sage dem User: **Tippe /clear um mit frischem Context weiterzumachen.**
-Die HANDOFF.md wird automatisch in die neue Session geladen.
+Sage dem User: **Tippe /exit — die Session startet automatisch neu.**
+(Falls auto-session.sh nicht l\u00e4uft: /clear und manuell weiter.)
 Arbeite NICHT weiter — der Context ist zu voll f\u00fcr qualitative Arbeit."""
 
     output = {

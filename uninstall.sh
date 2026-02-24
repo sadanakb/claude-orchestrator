@@ -44,6 +44,12 @@ if [ -f "$COMMANDS_DIR/handoff.md" ]; then
     echo "  Removed /handoff command"
 fi
 
+# ── Remove auto-session wrapper ────────────────────────────────────
+if [ -f ~/.claude/auto-session.sh ]; then
+    rm ~/.claude/auto-session.sh
+    echo "  Removed auto-session.sh"
+fi
+
 # ── Remove state files ─────────────────────────────────────────────
 echo ""
 echo "Cleaning up state files..."
