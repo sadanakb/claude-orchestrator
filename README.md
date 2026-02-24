@@ -20,6 +20,8 @@ Claude Orchestrator turns Claude Code into a **self-managing agent** that:
 - Restarts itself and picks up exactly where it left off
 - Shows a live StatusLine so you always know where things stand
 
+I built this because I kept losing progress during long coding sessions with Claude Code. Instead of manually writing summaries, the orchestrator does it automatically — so every session picks up exactly where the last one left off.
+
 ---
 
 ## Features
@@ -164,10 +166,18 @@ Project files (`.claude/CHECKPOINT.md`, `.claude/HANDOFF.md`) are **not** delete
 
 ---
 
+## Author
+
+**Sadan Akbari** — Business Informatics student at Frankfurt University of Applied Sciences
+
+[Portfolio](https://sadanakb.github.io) · [LinkedIn](https://www.linkedin.com/in/sadan-akbari) · [GitHub](https://github.com/sadanakb)
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
 ---
 
-Built for developers who ship with Claude Code.
+Built by a developer who ships with Claude Code.
