@@ -8,6 +8,7 @@
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
 CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
+LAST_CHECKPOINT="$PROJECT_DIR/.claude/.last-checkpoint.md"
 BACKUP_DIR="$PROJECT_DIR/.claude/backups"
 SESSION_COUNT_FILE="$PROJECT_DIR/.claude/session-count"
 
@@ -26,15 +27,15 @@ if [ -f "$HANDOFF_FILE" ]; then
     echo ""
     cat "$HANDOFF_FILE"
 
-    # Archive and consume
+    # Archive and consume HANDOFF
     mkdir -p "$BACKUP_DIR"
     cp "$HANDOFF_FILE" "$BACKUP_DIR/handoff-${TIMESTAMP}.md"
     rm "$HANDOFF_FILE"
 
-    # Also consume checkpoint if it exists (handoff supersedes it)
+    # Bug 3 Fix: CHECKPOINT nicht loeschen, sondern als Referenz behalten
     if [ -f "$CHECKPOINT_FILE" ]; then
         cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
-        rm "$CHECKPOINT_FILE"
+        mv "$CHECKPOINT_FILE" "$LAST_CHECKPOINT"
     fi
 
     LOADED_SOMETHING=true
@@ -46,10 +47,10 @@ elif [ -f "$CHECKPOINT_FILE" ]; then
     echo ""
     cat "$CHECKPOINT_FILE"
 
-    # Archive and consume
+    # Bug 3 Fix: Archivieren + umbenennen statt loeschen
     mkdir -p "$BACKUP_DIR"
     cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
-    rm "$CHECKPOINT_FILE"
+    mv "$CHECKPOINT_FILE" "$LAST_CHECKPOINT"
 
     LOADED_SOMETHING=true
 fi
@@ -70,7 +71,7 @@ if [ "$LOADED_SOMETHING" = true ]; then
     echo "========================================================"
     echo "Handoff loaded. Continue from 'Naechster Schritt' above."
     echo ""
-    echo "When this task is done, a new handoff will be written"
-    echo "automatically if context is > 60%."
+    echo "When this task is done, update .claude/CHECKPOINT.md."
+    echo "At ${THRESHOLD:-55}%+ context, CHECKPOINT becomes HANDOFF automatically."
     echo "========================================================"
 fi

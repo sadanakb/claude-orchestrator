@@ -47,16 +47,20 @@ else
     ICON="🟢"
 fi
 
-# Checkpoint count (count [x] entries in CHECKPOINT.md)
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
+# Bug 5 Fix: Graceful degradation when CLAUDE_PROJECT_DIR is not set
 DONE_COUNT=0
-
-if [ -f "$CHECKPOINT_FILE" ]; then
-    DONE_COUNT=$(grep -c '\[x\]' "$CHECKPOINT_FILE" 2>/dev/null || echo 0)
+if [ -n "$CLAUDE_PROJECT_DIR" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
+    CHECKPOINT_FILE="$CLAUDE_PROJECT_DIR/.claude/CHECKPOINT.md"
+    if [ -f "$CHECKPOINT_FILE" ]; then
+        DONE_COUNT=$(grep -c '\[x\]' "$CHECKPOINT_FILE" 2>/dev/null || echo 0)
+    fi
 fi
 
-# Project name from directory
-PROJ=$(basename "${CLAUDE_PROJECT_DIR:-.}")
+# Project name from directory (fallback to "?" if not set)
+if [ -n "$CLAUDE_PROJECT_DIR" ]; then
+    PROJ=$(basename "$CLAUDE_PROJECT_DIR")
+else
+    PROJ="?"
+fi
 
 echo "$ICON ${USED}% | ✓${DONE_COUNT} | $PROJ"

@@ -48,30 +48,36 @@ RESTART_COUNT=0
 SESSION_LOG="$PROJECT_DIR/.claude/sessions.log"
 PROTOCOL_TEMPLATE=~/.claude/templates/ORCHESTRATOR-PROTOCOL.md
 CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
+# Bug 7 Fix: Robusterer Marker-Kommentar statt fragiler Text-Suche
+PROTOCOL_MARKER="<!-- ORCHESTRATOR-PROTOCOL-V3 -->"
 mkdir -p "$PROJECT_DIR/.claude"
 
 # ── Auto-inject Orchestrator Protocol into CLAUDE.md ──────────────
-# Checks if protocol is already present. If not, appends it.
+# Checks if protocol is already present via marker comment.
 # This is the "brain" — without it, Claude doesn't write checkpoints
 # or delegate to sub-agents. Hooks alone are just infrastructure.
 if [ -f "$PROTOCOL_TEMPLATE" ]; then
     if [ ! -f "$CLAUDE_MD" ]; then
-        # No CLAUDE.md exists → create with protocol
-        cp "$PROTOCOL_TEMPLATE" "$CLAUDE_MD"
-        echo "✅ CLAUDE.md erstellt mit Orchestrator-Protokoll"
-    elif ! grep -q "Orchestrator Protocol" "$CLAUDE_MD" 2>/dev/null; then
-        # CLAUDE.md exists but no protocol → append
-        echo "" >> "$CLAUDE_MD"
+        # No CLAUDE.md exists → create with protocol + marker
+        echo "$PROTOCOL_MARKER" > "$CLAUDE_MD"
         cat "$PROTOCOL_TEMPLATE" >> "$CLAUDE_MD"
+        echo "✅ CLAUDE.md erstellt mit Orchestrator-Protokoll"
+    elif ! grep -qF "$PROTOCOL_MARKER" "$CLAUDE_MD" 2>/dev/null; then
+        # CLAUDE.md exists but no marker → append
+        {
+            echo ""
+            echo "$PROTOCOL_MARKER"
+            cat "$PROTOCOL_TEMPLATE"
+        } >> "$CLAUDE_MD"
         echo "✅ Orchestrator-Protokoll in CLAUDE.md ergaenzt"
     fi
 fi
 
-echo "╔══════════════════════════════════════════════════╗"
-echo "║  Claude Orchestrator v3 — Auto-Session           ║"
+echo "╔════════════════════════════════════════════════════╗"
+echo "║  Claude Orchestrator v3 — Auto-Session             ║"
 echo "║  Projekt: $(basename "$PROJECT_DIR")"
-echo "║  Checkpoint → Auto-Handoff → Auto-Restart        ║"
-echo "╚══════════════════════════════════════════════════╝"
+echo "║  Checkpoint → Auto-Handoff → Auto-Restart          ║"
+echo "╚════════════════════════════════════════════════════╝"
 echo ""
 
 # Clean up stale handoff-done flags from previous runs
@@ -117,10 +123,10 @@ while true; do
     if [ -f "$HANDOFF_FILE" ]; then
         # Handoff exists → auto-restart
         echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  📋 Handoff erkannt — Session wird neu gestartet"
         echo "  Druecke Ctrl+C in 3s zum Abbrechen..."
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
         # Give user a chance to abort
         sleep 3 || {

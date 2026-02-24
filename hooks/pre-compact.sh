@@ -17,15 +17,14 @@ TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')
 
 # Archive existing HANDOFF.md
 if [ -f "$HANDOFF_FILE" ]; then
-    cp "$HANDOFF_FILE" "$BACKUP_DIR/handoff-${TIMESTAMP}.md"
+    cp "$HANDOFF_FILE" "$BACKUP_DIR/handoff-precompact-${TIMESTAMP}.md"
 fi
 
 # Archive existing CHECKPOINT.md
 if [ -f "$CHECKPOINT_FILE" ]; then
-    cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
+    cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-precompact-${TIMESTAMP}.md"
 fi
 
-# Inject system message to write updated checkpoint after compaction
-echo "{
-  \"systemMessage\": \"Context compaction is about to happen. After compaction completes, immediately update .claude/CHECKPOINT.md with: current goal, completed items with file paths, remaining TODOs, key decisions, build/test status, and exact next action. This ensures continuity.\"
-}"
+# Bug 4 Fix: systemMessage entfernt (funktioniert nicht zuverlaessig mit async hooks).
+# Stattdessen: stderr-Warnung die Claude sieht.
+echo "⚠️  Context-Compaction laeuft. Nach Abschluss: .claude/CHECKPOINT.md sofort aktualisieren." >&2
