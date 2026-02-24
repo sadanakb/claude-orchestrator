@@ -35,14 +35,19 @@ TMP_FILE=$(mktemp ~/.claude/context-state.XXXXXX.tmp 2>/dev/null || echo "${STAT
 echo "{\"remaining\": $REMAINING, \"session_id\": \"$SESSION_ID\"}" > "$TMP_FILE"
 mv -f "$TMP_FILE" "$STATE_FILE"
 
-# Context icon
+# Context icon — aligned with actual handoff thresholds
+# Handoff triggers at 50-60% used (dynamic), so colors must match:
+#   🟢 = safe zone (under 40%)
+#   🟡 = approaching threshold (40-50%) — delegation should increase
+#   🟠 = at threshold (50-55%) — handoff imminent
+#   🔴 = past threshold (55%+) — should NEVER appear if system works
 USED=$((100 - REMAINING))
-if [ "$USED" -ge 80 ]; then
+if [ "$USED" -ge 55 ]; then
     ICON="🔴"
-elif [ "$USED" -ge 60 ]; then
-    ICON="🟡"
 elif [ "$USED" -ge 50 ]; then
     ICON="🟠"
+elif [ "$USED" -ge 40 ]; then
+    ICON="🟡"
 else
     ICON="🟢"
 fi

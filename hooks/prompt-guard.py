@@ -46,6 +46,11 @@ def main():
     prompt = data.get("prompt", "").strip()
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
+    # 0. Check if context is already high → nudge user to /clear
+    if should_nudge_clear(project_dir):
+        inject_clear_nudge()
+        sys.exit(0)
+
     # 1. Check for existing task queue — inject next task if present
     queue = load_queue(project_dir)
     if queue:
@@ -74,6 +79,47 @@ def main():
     # S = pass through silently, no overhead
 
     sys.exit(0)
+
+
+# ─── Context Check ──────────────────────────────────────────────────
+
+def should_nudge_clear(project_dir):
+    """Check if handoff-done flag exists AND handoff file exists.
+    This means stop-check already triggered but user hasn't /clear'd yet."""
+    state_file = os.path.expanduser("~/.claude/context-state.json")
+    handoff_file = os.path.join(project_dir, ".claude", "HANDOFF.md")
+
+    if not os.path.exists(handoff_file):
+        return False
+
+    # Check if any handoff-done flag exists for current session
+    claude_dir = os.path.expanduser("~/.claude")
+    try:
+        for f in os.listdir(claude_dir):
+            if f.startswith("handoff-done-"):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def inject_clear_nudge():
+    """Tell Claude the context is full and user should /clear."""
+    context = """\
+\u26a0\ufe0f CONTEXT-LIMIT ERREICHT — /clear eingeben!
+
+Der Handoff wurde bereits geschrieben (.claude/HANDOFF.md).
+Sage dem User: **Tippe /clear um mit frischem Context weiterzumachen.**
+Die HANDOFF.md wird automatisch in die neue Session geladen.
+Arbeite NICHT weiter — der Context ist zu voll f\u00fcr qualitative Arbeit."""
+
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": context,
+        }
+    }
+    print(json.dumps(output))
 
 
 # ─── Complexity Analysis ────────────────────────────────────────────

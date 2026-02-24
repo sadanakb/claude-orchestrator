@@ -103,16 +103,16 @@ if [ ! -f "$STATE_FILE" ]; then
 fi
 
 # -- 4. Dynamic threshold based on queue size ------------------------
-# More tasks in queue → more aggressive handoff (save context for next tasks)
-# Queue empty  → 40% remaining (60% used) = standard
-# Queue 1-2    → 45% remaining (55% used) = slightly aggressive
-# Queue 3+     → 50% remaining (50% used) = aggressive
+# AGGRESSIVE thresholds — handoff happens EARLY so 🔴 never appears
+# Queue empty  → 50% remaining (50% used) = standard
+# Queue 1-2    → 55% remaining (45% used) = aggressive
+# Queue 3+     → 60% remaining (40% used) = very aggressive
 if [ "$QUEUE_SIZE" -gt 2 ] 2>/dev/null; then
-    THRESHOLD=50
+    THRESHOLD=60
 elif [ "$QUEUE_SIZE" -gt 0 ] 2>/dev/null; then
-    THRESHOLD=45
+    THRESHOLD=55
 else
-    THRESHOLD=40
+    THRESHOLD=50
 fi
 
 REMAINING=$(python3 -c "
@@ -130,37 +130,47 @@ if [ "$REMAINING" -le "$THRESHOLD" ] 2>/dev/null; then
     USED=$((100 - REMAINING))
     touch "$HANDOFF_FLAG"
 
-    echo "
-⚠️  CONTEXT AT ${USED}% — WRITE HANDOFF BEFORE STOPPING
+    # ── AUTO-WRITE HANDOFF ──────────────────────────────────────
+    # Don't ask Claude to write it — write a template NOW so state
+    # is saved even if the session crashes. Claude will enrich it.
+    HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
+    mkdir -p "$PROJECT_DIR/.claude"
 
-Write .claude/HANDOFF.md now with this structure:
-
-# Handoff — $(date '+%Y-%m-%d %H:%M')
+    # Only write auto-handoff if no handoff exists yet
+    if [ ! -f "$HANDOFF_FILE" ]; then
+        cat > "$HANDOFF_FILE" << HANDOFF_EOF
+# Handoff — $(date '+%Y-%m-%d %H:%M') (auto-generated)
 
 ## Current Plan
-[Overall goal of this project/task]
+[Session wurde automatisch beendet — Context bei ${USED}%]
 
 ## Completed This Session
-[What was finished — with file paths]
+[Claude soll diese Sektion beim naechsten Start ergaenzen]
 
-## Agent-Results (Zusammenfassung)
-[What Sub-Agents found/implemented — key info only]
-
-## Remaining TODOs (Prioritätsreihenfolge)
-1. [Next task — VERY SPECIFIC]
-2. [After that]
+## Remaining TODOs
+[Aus dem letzten Gespraech ableiten]
 
 ## Key Decisions Made
-[Architecture, patterns, technology choices]
-
-## Active Files
-[Files currently being worked on]
+[Aus dem letzten Gespraech ableiten]
 
 ## Next Action
-[EXACT first step for the next session]
-[Which agents to spawn first]
+[Aus dem letzten Gespraech ableiten]
+HANDOFF_EOF
+    fi
 
-Write this file now, then stop. The next session loads it automatically.
+    # ── TELL CLAUDE: Write real handoff, then user must /clear ──
+    echo "
+⚠️  CONTEXT BEI ${USED}% — AUTOMATISCHER HANDOFF
+
+1. Schreibe JETZT .claude/HANDOFF.md mit dem echten Stand:
+   - Was wurde gemacht (Dateien + Zusammenfassung)
+   - Was ist noch offen (TODOs mit Prioritaet)
+   - Exakter naechster Schritt
+
+2. Sage dem User: **Tippe /clear um mit frischem Context weiterzumachen.**
+   Die HANDOFF.md wird automatisch in die neue Session geladen.
+
+WICHTIG: Kein neuer Code mehr. Nur Handoff schreiben und User zum /clear auffordern.
 " >&2
     exit 2
 fi
