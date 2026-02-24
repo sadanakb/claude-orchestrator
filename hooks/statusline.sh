@@ -1,7 +1,7 @@
 #!/bin/bash
-# statusline.sh — Claude Orchestrator v2
+# statusline.sh — Claude Orchestrator v3
 # Runs on every StatusLine update (continuously during session)
-# Shows: Context% + Task Progress + Project Name
+# Shows: Context% + Checkpoint-Count + Project Name
 # Writes context state to ~/.claude/context-state.json for other hooks
 
 INPUT=$(cat)
@@ -35,11 +35,7 @@ TMP_FILE=$(mktemp ~/.claude/context-state.XXXXXX.tmp 2>/dev/null || echo "${STAT
 echo "{\"remaining\": $REMAINING, \"session_id\": \"$SESSION_ID\"}" > "$TMP_FILE"
 mv -f "$TMP_FILE" "$STATE_FILE"
 
-# Context icon — aligned with handoff thresholds (55-60% used)
-#   🟢 = safe zone (under 45%)
-#   🟡 = approaching threshold (45-55%) — delegate more
-#   🟠 = at threshold (55-60%) — handoff about to trigger
-#   🔴 = past threshold (60%+) — should NEVER appear
+# Context icon
 USED=$((100 - REMAINING))
 if [ "$USED" -ge 60 ]; then
     ICON="🔴"
@@ -51,35 +47,16 @@ else
     ICON="🟢"
 fi
 
-# Task queue progress (if queue exists)
+# Checkpoint count (count [x] entries in CHECKPOINT.md)
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
-QUEUE_FILE="$PROJECT_DIR/.claude/task-queue.json"
-TASK_INFO=""
+CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
+DONE_COUNT=0
 
-if [ -f "$QUEUE_FILE" ]; then
-    PROGRESS=$(python3 -c "
-import json
-try:
-    with open('$QUEUE_FILE') as f:
-        d = json.load(f)
-    tasks = d.get('tasks', [])
-    total_orig = len(tasks)
-    done = len([t for t in tasks if t.get('status') == 'completed'])
-    pending = len([t for t in tasks if t.get('status', 'pending') != 'completed'])
-    # Show progress: current / total (total = done so far + remaining)
-    current = done + 1
-    total = done + pending
-    print(f'{current}/{total}')
-except:
-    print('')
-" 2>/dev/null)
-
-    if [ -n "$PROGRESS" ]; then
-        TASK_INFO=" | Task $PROGRESS"
-    fi
+if [ -f "$CHECKPOINT_FILE" ]; then
+    DONE_COUNT=$(grep -c '\[x\]' "$CHECKPOINT_FILE" 2>/dev/null || echo 0)
 fi
 
 # Project name from directory
 PROJ=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 
-echo "$ICON ${USED}%${TASK_INFO} | $PROJ"
+echo "$ICON ${USED}% | ✓${DONE_COUNT} | $PROJ"

@@ -1,11 +1,7 @@
 #!/bin/bash
-# stop-check.sh — Claude Orchestrator v2
+# stop-check.sh — Claude Orchestrator v3
 # Fires when Claude finishes a response
-# Four jobs:
-#   1. Mark completed in-progress tasks in the queue
-#   2. Notify about remaining task queue
-#   3. Dynamic threshold based on queue size
-#   4. If context exceeds threshold → force handoff
+# Single job: If context exceeds threshold → trigger handoff
 
 INPUT=$(cat)
 
@@ -22,78 +18,11 @@ SESSION_ID=${SESSION_ID:-unknown}
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 STATE_FILE=~/.claude/context-state.json
 HANDOFF_FLAG=~/.claude/handoff-done-${SESSION_ID}
-QUEUE_FILE="$PROJECT_DIR/.claude/task-queue.json"
+HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
+CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
+CONFIG_FILE="$PROJECT_DIR/.claude/orchestrator.json"
 
-# -- 1. Mark in-progress tasks as completed --------------------------
-if [ -f "$QUEUE_FILE" ]; then
-    python3 -c "
-import json, sys, os, tempfile
-
-queue_path = '$QUEUE_FILE'
-try:
-    with open(queue_path) as f:
-        data = json.load(f)
-    tasks = data.get('tasks', [])
-    updated = []
-    for t in tasks:
-        if t.get('status') == 'in_progress':
-            t['status'] = 'completed'
-        if t.get('status', 'pending') != 'completed':
-            updated.append(t)
-    data['tasks'] = updated
-
-    # Atomic write
-    dir_name = os.path.dirname(queue_path)
-    fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-    with os.fdopen(fd, 'w') as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, queue_path)
-
-    # Clean up if queue is empty
-    if not updated:
-        os.remove(queue_path)
-        md = queue_path.replace('.json', '.md')
-        if os.path.exists(md):
-            os.remove(md)
-except Exception:
-    pass
-" 2>/dev/null
-fi
-
-# -- 2. Notify about remaining queue --------------------------------
-QUEUE_SIZE=0
-if [ -f "$QUEUE_FILE" ]; then
-    QUEUE_SIZE=$(python3 -c "
-import json
-try:
-    with open('$QUEUE_FILE') as f:
-        d = json.load(f)
-    print(len([t for t in d.get('tasks', []) if t.get('status', 'pending') != 'completed']))
-except:
-    print(0)
-" 2>/dev/null)
-    QUEUE_SIZE=${QUEUE_SIZE:-0}
-
-    if [ "$QUEUE_SIZE" -gt "0" ] 2>/dev/null; then
-        NEXT_TITLE=$(python3 -c "
-import json
-try:
-    with open('$QUEUE_FILE') as f:
-        d = json.load(f)
-    tasks = [t for t in d.get('tasks', []) if t.get('status', 'pending') != 'completed']
-    if tasks:
-        print(tasks[0].get('title', 'Next task'))
-except:
-    print('Next queued task')
-" 2>/dev/null)
-        echo "
-📋 Task queue: ${QUEUE_SIZE} task(s) remaining. Next: \"$NEXT_TITLE\"
-The next task will load automatically when you start the next session.
-" >&2
-    fi
-fi
-
-# -- 3. Check if handoff already written this session ----------------
+# Already triggered this session? Skip.
 if [ -f "$HANDOFF_FLAG" ]; then
     exit 0
 fi
@@ -102,19 +31,21 @@ if [ ! -f "$STATE_FILE" ]; then
     exit 0
 fi
 
-# -- 4. Dynamic threshold based on queue size ------------------------
-# Handoff at 55-60% used. auto-session.sh restarts automatically.
-# Queue empty  → 45% remaining (55% used)
-# Queue 1-2    → 42% remaining (58% used)
-# Queue 3+     → 40% remaining (60% used)
-if [ "$QUEUE_SIZE" -gt 2 ] 2>/dev/null; then
-    THRESHOLD=40
-elif [ "$QUEUE_SIZE" -gt 0 ] 2>/dev/null; then
-    THRESHOLD=42
-else
-    THRESHOLD=45
+# Read threshold from project config or default to 55%
+THRESHOLD=55
+if [ -f "$CONFIG_FILE" ]; then
+    CUSTOM=$(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        print(int(json.load(f).get('threshold_percent', 55)))
+except:
+    print(55)
+" 2>/dev/null)
+    THRESHOLD=${CUSTOM:-55}
 fi
 
+# Read current context remaining
 REMAINING=$(python3 -c "
 import json
 try:
@@ -126,54 +57,57 @@ except:
 " 2>/dev/null)
 REMAINING=${REMAINING:-100}
 
-if [ "$REMAINING" -le "$THRESHOLD" ] 2>/dev/null; then
-    USED=$((100 - REMAINING))
-    touch "$HANDOFF_FLAG"
+USED=$((100 - REMAINING))
 
-    # ── AUTO-WRITE HANDOFF ──────────────────────────────────────
-    # Don't ask Claude to write it — write a template NOW so state
-    # is saved even if the session crashes. Claude will enrich it.
-    HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
-    mkdir -p "$PROJECT_DIR/.claude"
-
-    # Only write auto-handoff if no handoff exists yet
-    if [ ! -f "$HANDOFF_FILE" ]; then
-        cat > "$HANDOFF_FILE" << HANDOFF_EOF
-# Handoff — $(date '+%Y-%m-%d %H:%M') (auto-generated)
-
-## Current Plan
-[Session wurde automatisch beendet — Context bei ${USED}%]
-
-## Completed This Session
-[Claude soll diese Sektion beim naechsten Start ergaenzen]
-
-## Remaining TODOs
-[Aus dem letzten Gespraech ableiten]
-
-## Key Decisions Made
-[Aus dem letzten Gespraech ableiten]
-
-## Next Action
-[Aus dem letzten Gespraech ableiten]
-HANDOFF_EOF
-    fi
-
-    # ── TELL CLAUDE: Write real handoff, then exit ──────────────
-    echo "
-⚠️  CONTEXT BEI ${USED}% — AUTOMATISCHER HANDOFF + NEUSTART
-
-1. Schreibe JETZT .claude/HANDOFF.md mit dem echten Stand:
-   - Was wurde gemacht (Dateien + Zusammenfassung)
-   - Was ist noch offen (TODOs mit Prioritaet)
-   - Exakter naechster Schritt + welche Agents zuerst spawnen
-
-2. Sage dem User: **Tippe /exit — die Session startet automatisch neu.**
-   (Wenn auto-session.sh laeuft, passiert der Neustart von alleine.
-    Wenn nicht: /clear und dann manuell weiter.)
-
-WICHTIG: Kein neuer Code mehr. Nur Handoff schreiben und Session beenden.
-" >&2
-    exit 2
+# Check if over threshold
+if [ "$USED" -lt "$THRESHOLD" ] 2>/dev/null; then
+    exit 0
 fi
 
-exit 0
+# ── THRESHOLD EXCEEDED — Trigger Handoff ──────────────────────────
+touch "$HANDOFF_FLAG"
+mkdir -p "$PROJECT_DIR/.claude"
+
+# If CHECKPOINT.md exists → use it as handoff base (much better than empty template)
+if [ -f "$CHECKPOINT_FILE" ] && [ ! -f "$HANDOFF_FILE" ]; then
+    cp "$CHECKPOINT_FILE" "$HANDOFF_FILE"
+    # Append session-end marker
+    echo "" >> "$HANDOFF_FILE"
+    echo "---" >> "$HANDOFF_FILE"
+    echo "_Session beendet bei ${USED}% Context — naechste Session uebernimmt._" >> "$HANDOFF_FILE"
+elif [ ! -f "$HANDOFF_FILE" ]; then
+    # No checkpoint exists → write minimal template
+    cat > "$HANDOFF_FILE" << HANDOFF_EOF
+# Handoff — $(date '+%Y-%m-%d %H:%M') (auto-generated)
+
+## Ziel
+[Session wurde automatisch beendet — Context bei ${USED}%]
+
+## Erledigt
+[Claude soll diese Sektion beim naechsten Start ergaenzen]
+
+## Offen
+[Aus dem letzten Gespraech ableiten]
+
+## Entscheidungen
+[Aus dem letzten Gespraech ableiten]
+
+## Naechster Schritt
+[Aus dem letzten Gespraech ableiten]
+HANDOFF_EOF
+fi
+
+# Tell Claude: finalize checkpoint and exit
+echo "
+⚠️  CONTEXT BEI ${USED}% — AUTOMATISCHER HANDOFF
+
+1. Finalisiere JETZT .claude/CHECKPOINT.md mit dem echten Stand:
+   - Was wurde gemacht (Dateien + Zusammenfassung)
+   - Was ist noch offen (TODOs mit Prioritaet)
+   - Exakter naechster Schritt
+
+2. Sage dem User: **Tippe /exit — die Session startet automatisch neu.**
+
+WICHTIG: Kein neuer Code mehr. Nur Checkpoint finalisieren und Session beenden.
+" >&2
+exit 2

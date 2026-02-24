@@ -4,16 +4,6 @@
     "command": "~/.claude/hooks/statusline.sh"
   },
   "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/hooks/prompt-guard.py"
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [

@@ -1,5 +1,5 @@
 #!/bin/bash
-# pre-compact.sh — Claude Orchestrator v2
+# pre-compact.sh — Claude Orchestrator v3
 # Fires right BEFORE Claude Code performs compaction
 # Emergency backup: ensures state is preserved even if stop-check didn't trigger
 
@@ -9,7 +9,7 @@ cat > /dev/null
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 BACKUP_DIR="$PROJECT_DIR/.claude/backups"
 HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
-QUEUE_FILE="$PROJECT_DIR/.claude/task-queue.json"
+CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -20,12 +20,12 @@ if [ -f "$HANDOFF_FILE" ]; then
     cp "$HANDOFF_FILE" "$BACKUP_DIR/handoff-${TIMESTAMP}.md"
 fi
 
-# Archive task queue state
-if [ -f "$QUEUE_FILE" ]; then
-    cp "$QUEUE_FILE" "$BACKUP_DIR/task-queue-${TIMESTAMP}.json"
+# Archive existing CHECKPOINT.md
+if [ -f "$CHECKPOINT_FILE" ]; then
+    cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
 fi
 
-# Inject system message to write updated handoff after compaction
+# Inject system message to write updated checkpoint after compaction
 echo "{
-  \"systemMessage\": \"Context compaction is about to happen. After compaction completes, immediately update .claude/HANDOFF.md with: current plan, what agents have done, remaining TODOs, key decisions, and exact next action including which agents to spawn. This ensures continuity.\"
+  \"systemMessage\": \"Context compaction is about to happen. After compaction completes, immediately update .claude/CHECKPOINT.md with: current goal, completed items with file paths, remaining TODOs, key decisions, build/test status, and exact next action. This ensures continuity.\"
 }"

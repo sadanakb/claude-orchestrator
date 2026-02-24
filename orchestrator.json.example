@@ -1,0 +1,5 @@
+{
+  "threshold_percent": 55,
+  "max_restarts": 20,
+  "auto_restart": true
+}

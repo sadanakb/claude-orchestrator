@@ -1,21 +1,24 @@
 #!/bin/bash
-# session-start.sh — Claude Orchestrator v2
+# session-start.sh — Claude Orchestrator v3
 # Fires at the start of every Claude Code session
-# Three jobs:
-#   1. If HANDOFF.md exists → inject into context, then CONSUME it (rename)
-#   2. Check for stale in-progress tasks → reset to pending
-#   3. Inject continuation hints
+# Two jobs:
+#   1. If HANDOFF.md or CHECKPOINT.md exists → inject into context, then consume
+#   2. Increment session counter
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 HANDOFF_FILE="$PROJECT_DIR/.claude/HANDOFF.md"
-QUEUE_FILE="$PROJECT_DIR/.claude/task-queue.json"
+CHECKPOINT_FILE="$PROJECT_DIR/.claude/CHECKPOINT.md"
 BACKUP_DIR="$PROJECT_DIR/.claude/backups"
+SESSION_COUNT_FILE="$PROJECT_DIR/.claude/session-count"
 
 LOADED_SOMETHING=false
+TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')
 
-# -- 1. Load handoff if it exists, then CONSUME it --------------------
-# "Consume" = rename to .loaded so auto-session.sh doesn't loop forever.
-# If Claude needs to hand off again, stop-check.sh writes a NEW one.
+# -- 1. Load handoff or checkpoint (priority: HANDOFF > CHECKPOINT) ----
+# HANDOFF.md is written by stop-check.sh when context is full.
+# CHECKPOINT.md is updated after every sub-task by Claude.
+# If both exist, HANDOFF is more recent (it was generated FROM the checkpoint).
+
 if [ -f "$HANDOFF_FILE" ]; then
     echo "========================================================"
     echo "        HANDOFF FROM PREVIOUS SESSION"
@@ -25,48 +28,49 @@ if [ -f "$HANDOFF_FILE" ]; then
 
     # Archive and consume
     mkdir -p "$BACKUP_DIR"
-    TIMESTAMP=$(date '+%Y-%m-%d_%H-%M')
     cp "$HANDOFF_FILE" "$BACKUP_DIR/handoff-${TIMESTAMP}.md"
     rm "$HANDOFF_FILE"
 
+    # Also consume checkpoint if it exists (handoff supersedes it)
+    if [ -f "$CHECKPOINT_FILE" ]; then
+        cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
+        rm "$CHECKPOINT_FILE"
+    fi
+
+    LOADED_SOMETHING=true
+
+elif [ -f "$CHECKPOINT_FILE" ]; then
+    echo "========================================================"
+    echo "        CHECKPOINT FROM PREVIOUS SESSION"
+    echo "========================================================"
+    echo ""
+    cat "$CHECKPOINT_FILE"
+
+    # Archive and consume
+    mkdir -p "$BACKUP_DIR"
+    cp "$CHECKPOINT_FILE" "$BACKUP_DIR/checkpoint-${TIMESTAMP}.md"
+    rm "$CHECKPOINT_FILE"
+
     LOADED_SOMETHING=true
 fi
 
-# -- 2. Reset stale in-progress tasks to pending --------------------
-if [ -f "$QUEUE_FILE" ]; then
-    python3 -c "
-import json, os, tempfile
-
-queue_path = '$QUEUE_FILE'
-try:
-    with open(queue_path) as f:
-        data = json.load(f)
-    tasks = data.get('tasks', [])
-    changed = False
-    for t in tasks:
-        if t.get('status') == 'in_progress':
-            t['status'] = 'pending'
-            changed = True
-    if changed:
-        dir_name = os.path.dirname(queue_path)
-        fd, tmp = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-        with os.fdopen(fd, 'w') as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, queue_path)
-except Exception:
-    pass
-" 2>/dev/null
-    LOADED_SOMETHING=true
+# -- 2. Increment session counter -------------------------------------
+if [ -f "$SESSION_COUNT_FILE" ]; then
+    COUNT=$(cat "$SESSION_COUNT_FILE" 2>/dev/null)
+    COUNT=${COUNT:-0}
+    echo $((COUNT + 1)) > "$SESSION_COUNT_FILE"
+else
+    mkdir -p "$PROJECT_DIR/.claude"
+    echo "1" > "$SESSION_COUNT_FILE"
 fi
 
-# -- 3. Inject continuation hints ------------------------------------
+# -- 3. Inject continuation hints --------------------------------------
 if [ "$LOADED_SOMETHING" = true ]; then
     echo ""
     echo "========================================================"
-    echo "Handoff loaded and consumed. Continue from 'Next Action'."
+    echo "Handoff loaded. Continue from 'Naechster Schritt' above."
     echo ""
-    echo "When this task is DONE: just /exit — no restart happens."
-    echo "When context gets full: handoff is written automatically"
-    echo "  and /exit triggers a fresh restart."
+    echo "When this task is done, a new handoff will be written"
+    echo "automatically if context is > 60%."
     echo "========================================================"
 fi

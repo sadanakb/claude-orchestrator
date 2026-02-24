@@ -1,5 +1,7 @@
 # Claude Orchestrator state files
 .claude/HANDOFF.md
-.claude/task-queue.json
-.claude/task-queue.md
+.claude/CHECKPOINT.md
 .claude/backups/
+.claude/session-count
+.claude/sessions.log
+.claude/orchestrator.json
