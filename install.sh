@@ -1,13 +1,12 @@
 #!/bin/bash
-# install.sh — Claude Orchestrator v2
+# install.sh — Claude Orchestrator v2 (Slim)
 # One-time global setup. Run once → works for ALL Claude Code sessions.
 set -e
 
-echo "Installing Claude Orchestrator v2..."
+echo "Installing Claude Orchestrator v2 (Slim)..."
 echo ""
 
 HOOKS_DIR=~/.claude/hooks
-SKILLS_DIR=~/.claude/skills/orchestrator
 COMMANDS_DIR=~/.claude/commands
 SETTINGS_FILE=~/.claude/settings.json
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,16 +20,14 @@ for f in hooks/statusline.sh hooks/stop-check.sh hooks/session-start.sh hooks/pr
         MISSING=true
     fi
 done
-if [ ! -f "$SCRIPT_DIR/skills/orchestrator.md" ]; then
-    echo "  ERROR: Missing $SCRIPT_DIR/skills/orchestrator.md" >&2
-    MISSING=true
-fi
-if [ ! -f "$SCRIPT_DIR/commands/handoff.md" ]; then
-    echo "  ERROR: Missing $SCRIPT_DIR/commands/handoff.md" >&2
-    MISSING=true
-fi
+for f in commands/handoff.md auto-session.sh; do
+    if [ ! -f "$SCRIPT_DIR/$f" ]; then
+        echo "  ERROR: Missing $SCRIPT_DIR/$f" >&2
+        MISSING=true
+    fi
+done
 if [ "$MISSING" = true ]; then
-    echo "Installation aborted due to missing files." >&2
+    echo "Installation aborted." >&2
     exit 1
 fi
 echo "  All source files present"
@@ -45,27 +42,20 @@ cp "$SCRIPT_DIR/hooks/session-start.sh" "$HOOKS_DIR/session-start.sh"
 cp "$SCRIPT_DIR/hooks/pre-compact.sh"   "$HOOKS_DIR/pre-compact.sh"
 cp "$SCRIPT_DIR/hooks/prompt-guard.py"  "$HOOKS_DIR/prompt-guard.py"
 chmod +x "$HOOKS_DIR"/*.sh "$HOOKS_DIR"/*.py
-echo "  Installed 5 hooks (4 shell + 1 python)"
+echo "  Installed 5 hooks"
 
-# ── Install orchestrator skill ─────────────────────────────────────
-mkdir -p "$SKILLS_DIR"
-echo ""
-echo "Installing orchestrator skill to $SKILLS_DIR..."
-cp "$SCRIPT_DIR/skills/orchestrator.md" "$SKILLS_DIR/orchestrator.md"
-echo "  Installed orchestrator skill"
-
-# ── Install slash commands ─────────────────────────────────────────
+# ── Install slash command ──────────────────────────────────────────
 mkdir -p "$COMMANDS_DIR"
 echo ""
-echo "Installing slash commands to $COMMANDS_DIR..."
+echo "Installing /handoff command..."
 cp "$SCRIPT_DIR/commands/handoff.md" "$COMMANDS_DIR/handoff.md"
-echo "  Installed /handoff command (v2 format)"
+echo "  Installed /handoff"
 
 # ── Install auto-session wrapper ───────────────────────────────────
 echo ""
 echo "Installing auto-session wrapper..."
-cp "$SCRIPT_DIR/auto-session.sh" "$HOOKS_DIR/../auto-session.sh"
-chmod +x "$HOOKS_DIR/../auto-session.sh"
+cp "$SCRIPT_DIR/auto-session.sh" ~/.claude/auto-session.sh
+chmod +x ~/.claude/auto-session.sh
 echo "  Installed ~/.claude/auto-session.sh"
 
 # ── Configure settings.json ────────────────────────────────────────
@@ -87,10 +77,8 @@ with open(existing_path) as f:
 with open(new_path) as f:
     new = json.load(f)
 
-# Set statusLine
 existing["statusLine"] = new["statusLine"]
 
-# Merge hooks without duplicating
 if "hooks" not in existing:
     existing["hooks"] = {}
 
@@ -106,7 +94,7 @@ for event, hook_list in new["hooks"].items():
             for h in group.get("hooks", []):
                 if h.get("command", "") not in existing_cmds:
                     existing["hooks"][event].append(group)
-                    break  # Only add the group once
+                    break
 
 with open(existing_path, "w") as f:
     json.dump(existing, f, indent=2)
@@ -115,62 +103,24 @@ print("  Merged into existing settings.json")
 PYTHON
 fi
 
-# ── Add .gitignore entries to current project ──────────────────────
-if [ -n "$CLAUDE_PROJECT_DIR" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
-    GITIGNORE="$CLAUDE_PROJECT_DIR/.gitignore"
-    if [ -f "$GITIGNORE" ]; then
-        if ! grep -q "claude-orchestrator" "$GITIGNORE" 2>/dev/null; then
-            echo "" >> "$GITIGNORE"
-            echo "# Claude Orchestrator state files" >> "$GITIGNORE"
-            echo ".claude/HANDOFF.md" >> "$GITIGNORE"
-            echo ".claude/task-queue.json" >> "$GITIGNORE"
-            echo ".claude/task-queue.md" >> "$GITIGNORE"
-            echo ".claude/backups/" >> "$GITIGNORE"
-            echo "  Added orchestrator entries to $GITIGNORE"
-        fi
-    fi
-fi
-
-# ── Done ───────────────────────────────────────────────────────────
+# ── Show CLAUDE.md template ────────────────────────────────────────
 echo ""
 echo "============================================"
-echo "  Claude Orchestrator v2 installed!"
+echo "  Claude Orchestrator v2 (Slim) installed!"
 echo "============================================"
 echo ""
-echo "What happens now:"
-echo ""
-echo "  SMALL tasks (< 80 chars, simple):"
-echo "    → Claude works normally, no overhead"
-echo ""
-echo "  MEDIUM tasks:"
-echo "    → Claude gets delegation hints"
-echo "    → Encouraged to use Sub-Agents"
-echo ""
-echo "  LARGE/XL tasks:"
-echo "    → Orchestrator mode activates automatically"
-echo "    → Claude becomes an Architect, delegates to Sub-Agents"
-echo "    → Explore → Plan → Build → Review workflow"
-echo ""
-echo "  MULTI-TASK requests (3+ separate tasks):"
-echo "    → Only task 1 goes to Claude"
-echo "    → Tasks 2-N saved to queue"
-echo "    → Each session handles one task with full focus"
-echo ""
-echo "  CONTEXT > 55%:"
-echo "    → Handoff written automatically"
-echo "    → Claude says: type /exit"
-echo "    → auto-session.sh restarts Claude with fresh context"
-echo "    → Handoff loaded, work continues seamlessly"
-echo ""
-echo "Settings:     $SETTINGS_FILE"
-echo "Hooks:        $HOOKS_DIR/"
-echo "Skill:        $SKILLS_DIR/orchestrator.md"
-echo "Auto-Session: ~/.claude/auto-session.sh"
-echo ""
-echo "EMPFOHLEN: Starte Claude ab jetzt immer mit:"
+echo "Starte Claude ab jetzt mit:"
 echo "  ~/.claude/auto-session.sh /pfad/zum/projekt"
 echo ""
-echo "Dann passiert bei Context-Limit alles automatisch:"
-echo "  Handoff → /exit → Neustart → weiter geht's"
+echo "Was passiert:"
+echo "  3+ Tasks in einer Nachricht → Queue (eins nach dem anderen)"
+echo "  Context > 55% → Handoff → /exit → Auto-Restart"
+echo "  StatusLine zeigt: 🟢 Context% | Task 2/5 | projekt"
+echo ""
+echo "OPTIONAL: Kopiere diese Zeilen in die CLAUDE.md deines Projekts"
+echo "fuer bessere Sub-Agent-Nutzung:"
+echo ""
+cat "$SCRIPT_DIR/CLAUDE-TEMPLATE.md"
+echo ""
 echo ""
 echo "To uninstall: $SCRIPT_DIR/uninstall.sh"

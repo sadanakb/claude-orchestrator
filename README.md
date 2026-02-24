@@ -1,19 +1,19 @@
-# Claude Orchestrator v2
+# Claude Orchestrator v2 (Slim)
 
-Ein Meta-System das Claude Code von einem Solo-Entwickler in einen Lead-Architekten verwandelt. Statt alles selbst zu machen, delegiert Claude an Sub-Agents, haelt seinen Context lean, und arbeitet wie eine Software-Entwicklungsfirma.
+Automatisches Context-Management fuer Claude Code. Wenn der Context voll wird, passiert alles von alleine: Handoff schreiben, Session beenden, neu starten, weitermachen.
 
-## Was ist anders als v1 (claude-session-handoff)?
+## Was es macht
 
-| Aspekt | v1 | v2 |
-|--------|----|----|
-| Aufgaben-Modus | Sequenziell | Parallel (Sub-Agents) |
-| Claude's Rolle | Builder (macht alles) | Architekt (delegiert) |
-| Context-Management | Passiv (60% Threshold) | Aktiv (proaktive Delegation) |
-| Exploration | Im Haupt-Context | Via Explore-Agents |
-| Implementierung | Im Haupt-Context | Via Builder-Agents |
-| Code-Review | Keins | Via Review-Agents |
-| Task-Splitting | Nur Multi-Task | + Komplexitaets-Analyse |
-| Threshold | Statisch 60% | Dynamisch 50-60% |
+1. **Auto-Handoff** — Bei 55% Context schreibt `stop-check.sh` automatisch eine HANDOFF.md
+2. **Auto-Restart** — `auto-session.sh` startet Claude neu wenn ein Handoff existiert
+3. **Task-Queue** — Bei 3+ Tasks in einer Nachricht: eins nach dem anderen, nicht alles auf einmal
+4. **StatusLine** — Zeigt live: Context% + Task-Progress + Projekt
+
+## Was es NICHT macht (bewusst entfernt)
+
+- ~~Komplexitaets-Scoring~~ — Regex kann Intent nicht verstehen
+- ~~Orchestrator-Injection~~ — Claude ignoriert injizierte Anweisungen oft
+- ~~Erzwungene Delegation~~ — Gehoert in CLAUDE.md, nicht in per-Message-Hooks
 
 ## Installation
 
@@ -24,69 +24,46 @@ chmod +x install.sh
 ./install.sh
 ```
 
-## Wie es funktioniert
+## Nutzung
 
-### 1. Prompt Guard (prompt-guard.py)
-
-Analysiert JEDE User-Nachricht bevor Claude sie sieht:
-
-- **Kurze Prompts** (< 80 Zeichen): Durchlassen, kein Overhead
-- **Mittlere Aufgaben** (Score 3-5): Delegation empfohlen
-- **Grosse Aufgaben** (Score 6-8): Orchestrator-Modus erzwungen
-- **XL Aufgaben** (Score 9+): Multi-Phase + erzwungene Delegation
-- **Multi-Task** (3+ unabhaengige Tasks): Queue + sequentielle Abarbeitung
-
-### 2. Orchestrator Skill (orchestrator.md)
-
-Definiert Claude's Verhalten im Orchestrator-Modus:
-
-```
-Explore (Agents) -> Plan (Agent) -> Build (Agents) -> Review (Agent) -> Report
+```bash
+# Starte Claude immer so:
+~/.claude/auto-session.sh /pfad/zum/projekt
 ```
 
-- Explore-Agents untersuchen den Codebase
-- Plan-Agent entwirft die Implementierung
-- Builder-Agents implementieren parallel
-- Review-Agent prueft auf Bugs/Security
-- Claude koordiniert und berichtet
+Was passiert:
+```
+Claude arbeitet... 🟢 30% → 🟡 48% → 🟠 56%
+  → stop-check: Schreibt HANDOFF.md automatisch
+  → Claude: "Tippe /exit"
+  → Du: /exit
+  → Wrapper: "Handoff erkannt, starte neu..."
+  → Neue Session laedt Handoff → weiter geht's
+  → Aufgabe fertig → /exit → kein Handoff → Wrapper stoppt
+```
 
-### 3. Dynamic Context Management
-
-- **StatusLine**: Zeigt Context%, Task-Progress, Projekt
-- **Stop-Check**: Dynamischer Threshold basierend auf Queue-Groesse
-- **Pre-Compact**: Sichert State vor Compaction
-- **Session-Start**: Laedt Handoff + Queue automatisch
-
-## Dateistruktur
+## Dateien
 
 ```
 claude-orchestrator/
 ├── hooks/
-│   ├── prompt-guard.py      # Komplexitaets-Analyse + Orchestrierung
+│   ├── prompt-guard.py      # Multi-Task-Queue + Post-Handoff-Nudge
 │   ├── statusline.sh        # Context% + Task-Progress
-│   ├── session-start.sh     # Handoff + Queue laden
-│   ├── stop-check.sh        # Dynamischer Threshold
-│   └── pre-compact.sh       # State Backup
-├── skills/
-│   └── orchestrator.md      # Orchestrator-Verhalten
+│   ├── session-start.sh     # Handoff laden + konsumieren
+│   ├── stop-check.sh        # Auto-Handoff bei 55%
+│   └── pre-compact.sh       # State-Backup vor Compaction
 ├── commands/
 │   └── handoff.md           # /handoff Slash-Command
+├── auto-session.sh          # Wrapper: Auto-Restart-Loop
+├── CLAUDE-TEMPLATE.md       # Copy-paste fuer deine CLAUDE.md
 ├── settings.json            # Hook-Konfiguration
 ├── install.sh               # Installation
 └── uninstall.sh             # Deinstallation
 ```
 
-## Komplexitaets-Scoring
+## Optional: CLAUDE.md Richtlinien
 
-Der Prompt Guard bewertet jede Nachricht nach:
-
-- **Datei-Referenzen** (.tsx, .py, etc.): 1-3 Punkte
-- **Feature-Keywords** (implementiere, baue, erstelle): bis 4 Punkte
-- **Architektur-Keywords** (refactor, migrate, database): bis 4 Punkte
-- **Multi-File-Indikatoren**: bis 3 Punkte
-- **Laenge** (> 250 Zeichen): 1-2 Punkte
-
-Klassen: S (0-2), M (3-5), L (6-8), XL (9+)
+Kopiere den Inhalt von `CLAUDE-TEMPLATE.md` in die CLAUDE.md deines Projekts. Das gibt Claude Richtlinien fuer Sub-Agent-Nutzung — ohne per-Message-Overhead.
 
 ## Deinstallation
 
@@ -94,9 +71,3 @@ Klassen: S (0-2), M (3-5), L (6-8), XL (9+)
 cd ~/claude-orchestrator
 ./uninstall.sh
 ```
-
-## Voraussetzungen
-
-- Claude Code CLI
-- Python 3.6+
-- ANTHROPIC_API_KEY (nur fuer Multi-Task-Erkennung via API, optional)
